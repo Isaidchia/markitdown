@@ -1,11 +1,11 @@
 from docling.document_converter import DocumentConverter
 
-source = "textbook.pdf"
+source = "encryption.pdf"
 converter = DocumentConverter()
 result = converter.convert(source)
 
 markdown_output = result.document.export_to_markdown()
-output_path = "textbook_docling.md"
+output_path = "encryption_docling.md"
 
 with open(output_path, "w", encoding="utf-8") as destination_file:
     destination_file.write(markdown_output)
