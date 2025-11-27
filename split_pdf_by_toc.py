@@ -32,8 +32,8 @@ class UnitRange:
     page_end: int
 
 
-def parse_top_level_entries(csv_path: Path) -> list[TocEntry]:
-    """Parse the CSV and return ordered top-level TOC entries."""
+def parse_top_level_entries(csv_path: Path, split_level: str = "main") -> list[TocEntry]:
+    """Parse the CSV and return ordered TOC entries based on split level."""
 
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
@@ -54,8 +54,22 @@ def parse_top_level_entries(csv_path: Path) -> list[TocEntry]:
             normalized_row = {key.strip(): value for key, value in row.items()}
             
             raw_index = (normalized_row.get("index") or "").strip()
-            if not raw_index or "." in raw_index:
+            if not raw_index:
                 continue
+            
+            # Filter based on split level
+            dot_count = raw_index.count(".")
+            if split_level == "main":
+                # Main level: no dots (1, 2, 3, etc.)
+                if dot_count != 0:
+                    continue
+            elif split_level == "sub":
+                # Sub level: exactly one dot (1.1, 1.2, 1.4, etc.)
+                if dot_count != 1:
+                    continue
+            else:
+                raise ValueError(f"Invalid split_level: {split_level}. Must be 'main' or 'sub'")
+            
             title = (normalized_row.get("title") or "").strip()
             if not title:
                 title = f"Unit {raw_index}"
@@ -68,7 +82,8 @@ def parse_top_level_entries(csv_path: Path) -> list[TocEntry]:
             entries.append(TocEntry(index=raw_index, title=title, page_start=page_start, page_end=page_end))
 
     if not entries:
-        raise ValueError(f"No top-level entries found in {csv_path}")
+        level_name = "top-level" if split_level == "main" else "sub-index"
+        raise ValueError(f"No {level_name} entries found in {csv_path}")
 
     entries.sort(key=lambda entry: entry.page_start)
     return entries
@@ -162,14 +177,15 @@ def split_pdf_to_markdown(
     pdf_path: Path,
     csv_path: Path,
     output_dir: Path,
+    split_level: str = "main",
 ) -> list[Path]:
-    """Split a PDF by top-level units and export markdown files."""
+    """Split a PDF by units and export markdown files."""
 
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF file not found: {pdf_path}")
 
     reader = PdfReader(str(pdf_path))
-    entries = parse_top_level_entries(csv_path)
+    entries = parse_top_level_entries(csv_path, split_level=split_level)
     unit_ranges = determine_unit_ranges(entries, len(reader.pages))
 
     converter = DocumentConverter()
@@ -199,6 +215,13 @@ def parse_args(args: Iterable[str] | None = None) -> argparse.Namespace:
         default=Path("output"),
         help="Directory to store markdown files (default: ./output)",
     )
+    parser.add_argument(
+        "--level",
+        type=str,
+        choices=["main", "sub"],
+        default="main",
+        help="Split level: 'main' for top-level units (1, 2, 3) or 'sub' for sub-index units (1.1, 1.2, 1.4) (default: main)",
+    )
     return parser.parse_args(args)
 
 
@@ -206,7 +229,9 @@ def main(argv: Iterable[str] | None = None) -> None:
     """Entrypoint for CLI execution."""
 
     arguments = parse_args(argv)
-    written_paths = split_pdf_to_markdown(arguments.pdf, arguments.csv, arguments.output)
+    written_paths = split_pdf_to_markdown(
+        arguments.pdf, arguments.csv, arguments.output, split_level=arguments.level
+    )
     print(f"Wrote {len(written_paths)} markdown files to {arguments.output}")
 
 
